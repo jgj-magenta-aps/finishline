@@ -1,0 +1,14 @@
+{"time":"2020-03-20T11:32:25 +0100","date":"2020-03-20","batch":"17","job":"job-runner total-status","job-status":"success","imports-ok":"true","exports-ok":"true","reports-ok":"true","backup-ok":"true"}
+{"time":"2020-03-20T11:34:01 +0100","date":"2020-03-20","batch":"18","job":"imports","job-status":"starting"}
+{"time":"2020-03-20T11:34:01 +0100","date":"2020-03-20","batch":"18","job":"imports_opus_diff_import","job-status":"starting"}
+{"time":"2020-03-20T11:34:01 +0100","date":"2020-03-20","batch":"18","job":"imports_opus_diff_import","job-status":"success"}
+{"time":"2020-03-20T11:34:01 +0100","date":"2020-03-20","batch":"18","job":"imports","job-status":"success"}
+{"time":"2020-03-20T11:34:01 +0100","date":"2020-03-20","batch":"18","job":"exports","job-status":"starting"}
+{"time":"2020-03-20T11:34:01 +0100","date":"2020-03-20","batch":"18","job":"exports_cpr_uuid","job-status":"starting"}
+{"time":"2020-03-20T11:37:22 +0100","date":"2020-03-20","batch":"18","job":"exports_cpr_uuid","job-status":"success"}
+{"time":"2020-03-20T11:37:22 +0100","date":"2020-03-20","batch":"18","job":"exports","job-status":"success"}
+{"time":"2020-03-20T11:37:22 +0100","date":"2020-03-20","batch":"18","job":"reports","job-status":"starting"}
+{"time":"2020-03-20T11:37:22 +0100","date":"2020-03-20","batch":"18","job":"reports","job-status":"success"}
+{"time":"2020-03-20T11:37:22 +0100","date":"2020-03-20","batch":"18","job":"job-runner enabled-jobs","job-status":"info","crontab.RUN_OPUS_DIFF_IMPORT":"true","Xcrontab.RUN_CHECK_AD_CONNECTIVITY":"true","crontab.RUN_CPR_UUID":"true"}
+{"time":"2020-03-20T11:37:22 +0100","date":"2020-03-20","batch":"18","job":"job-runner version-info","job-status":"info","git-commit":"b98754e8f9f6ac29dc821f0786868cf941b99f84"}
+{"time":"2020-03-20T11:37:23 +0100","date":"2020-03-20","batch":"18","job":"job-runner total-status","job-status":"success","imports-ok":"true","exports-ok":"true","reports-ok":"true","backup-ok":"true"}
