@@ -4,6 +4,7 @@ import pathlib
 from sqlalchemy import and_, or_
 from finishline.settings import settings
 from finishline.app import app, db, Jobsonl, State, Stack, Job, Server, ServerJob
+import collections
 import datetime
 
 libpath = pathlib.Path(__file__).parent
@@ -42,27 +43,47 @@ def store_jobsonl(jsonl):
         server = Server(name=jsonl["server"])
         db.session.add(server)
 
-    # find/create jobsonl if does not exist
-    jobsonl = db.session.query(Jobsonl).filter(and_(
-        Jobsonl.name == jsonl[settings["finishline.job.name"]],
-        Jobsonl.server == jsonl["server"],
-        Jobsonl.timestamp == jsonl[settings["finishline.job.timestamp"]],
-    )).one_or_none()
-    if jobsonl is None:
-        jobsonl = Jobsonl(
-            server = jsonl["server"],
-            name=jsonl[settings["finishline.job.name"]],
-            status=jsonl[settings["finishline.job.status"]],
-            timestamp=datetime.datetime.strptime(
-                jsonl[settings["finishline.job.timestamp"]], #"%Y-%m-%dT%H:%M:%Sz"
-                settings["finishline.job.timestamp.format"]
-            ),
-            raw = json.dumps(jsonl)
-        )
-        db.session.add(jobsonl)
-    db.session.commit()
-    return jobsonl
+    # find/create job if it does not exist:
+    job = db.session.query(Job).filter(
+        Job.name == jsonl[settings["finishline.job.name"]],
+    ).one_or_none()
+    if not job:
+        job = Job(name=jsonl[settings["finishline.job.name"]])
+        db.session.add(job)
 
+    # make the line, as it does most probably not exist
+    incoming = Jobsonl(
+        server = server,
+        job = job,
+        status=jsonl[settings["finishline.job.status"]],
+        date=datetime.datetime.strptime(
+            jsonl[settings["finishline.job.date"]], #"%Y-%m-%dT%H:%M:%Sz"
+            settings["finishline.job.date.format"]
+        ),
+        timestamp=datetime.datetime.strptime(
+            jsonl[settings["finishline.job.timestamp"]], #"%Y-%m-%d
+            settings["finishline.job.timestamp.format"]
+        ),
+        raw = json.dumps(jsonl)
+    )
+
+    # look for an original 
+    original = db.session.query(Jobsonl).filter(and_(
+        Jobsonl.job == job,
+        Jobsonl.server == incoming.server,
+        Jobsonl.date == incoming.date,
+        or_(
+            Jobsonl.timestamp == incoming.timestamp,
+            Jobsonl.timestamp == None
+        )
+    )).one_or_none()
+
+    if original is not None:
+        return original
+    else:
+        db.session.add(incoming)
+        db.session.commit()
+        return incoming
 
 def calc_expected(what, state):
     if what == "start":
@@ -113,117 +134,131 @@ def handle_meta(jobsonl):
 
         db.session.commit()
 
-            
-def handle_jobstatus(jobsonl):
-    #today
-    stateservertoday = db.session.query(State).filter(and_(
-        State.jobdate == jobsonl.timestamp.date(),
-        State.name == "job-runner",
-        State.server == jobsonl.server
+def get_server_state(server, date):
+    # if it is there return it
+    server_state = db.session.query(State).filter(and_(
+        State.jobdate == date,
+        State.name == "Job-Runner",
+        State.server == server
     )).one_or_none()
+    if server_state is not None and date < datetime.date.today():
+        return server_state
 
-    if stateservertoday is None:
-        stateservertoday = State(
-            server = jobsonl.server,
-            name = "job-runner",
-            jobdate = jobsonl.timestamp.date(), 
-            status = "starting",
+    # if it is not there, calc job states first
+    job_states = get_job_states(server, date)
+    if not server_state:
+        server_state = State(
+            jobdate=date,
+            expected_start=None,
+            expected_end=None,
+            name="Job-Runner",
+            server=server,
+            servername=server.name,
         )
-        db.session.add(stateservertoday)
+        db.session.add(server_state)
+    if len(job_states):
+        expected_start=job_states[0].expected_start,
+        expected_end=job_states[-1].expected_end,
+    for job_state in job_states:
+        job_state.parent = server_state
+        server_state.status = job_state.status
+    db.session.commit()
+    return server_state
 
-    statetoday = db.session.query(State).filter(and_(
-        State.jobdate == jobsonl.timestamp.date(),
-        State.name == jobsonl.name
+def get_server_states(date):
+    states = [
+        get_server_state(server, date)
+        for server in db.session.query(Server).all()
+    ]
+    return states
+
+def get_job_state(job, server, date):
+    job_state = db.session.query(State).filter(and_(
+        State.jobdate == date,
+        State.name == job.name,
+        State.server == server
     )).one_or_none()
+    if job_state is not None:
+        if job_state.actual_start is not None:
+            #finished
+            return job_state
 
-    if statetoday is None:
-        statetoday = State(
-            server = jobsonl.server,
-            name = jobsonl.name,
-            jobdate = jobsonl.timestamp.date(), 
-            parent = stateservertoday
-        )
-        db.session.add(statetoday)
+    actual_start_job = db.session.query(Jobsonl).filter(and_(
+        Jobsonl.server == server,
+        Jobsonl.job == job,
+        Jobsonl.date == date,
+        Jobsonl.status == settings["finishline.job.status.starting"],
+    )).first()
+    if job_state and actual_start_job:
+        job_state.actual_start = actual_start_job.timestamp
 
-    # tomorrow
-    stateservertomorrow = db.session.query(State).filter(and_(
-        State.jobdate == (jobsonl.timestamp.date() + datetime.timedelta(days=1)),
-        State.name == "job-runner",
-        State.server == jobsonl.server
-    )).one_or_none()
+    actual_end_job = db.session.query(Jobsonl).filter(and_(
+        Jobsonl.server == server,
+        Jobsonl.job == job,
+        Jobsonl.date == date,
+        Jobsonl.status.in_ [
+            settings["finishline.job.status.success"],
+            settings["finishline.job.status.failure"],
+        ]
+    )).first()
+    if job_state and actual_end_job:
+        job_state.actual_start = actual_end_job.timestamp
 
-    if stateservertomorrow is None:
-        stateservertomorrow = State(
-            server = jobsonl.server,
-            name = "job-runner",
-            jobdate = jobsonl.timestamp.date() + datetime.timedelta(days=1),
-        )
-        db.session.add(stateservertomorrow)
+    job_state = State(
+        jobdate=date,
+        expected_start=None,
+        expected_end=None,
+        name=job.name,
+        server=server,
+        servername=server.name,
+    )
+    if actual_start_job:
+        job_state.actual_start = actual_start_job.timestamp
+    if actual_end_job:
+        job_state.actual_end = actual_end_job.timestamp
+        job_state.status = actual_end_job.status
+        db.session.add(job.state)
 
-    statetomorrow = db.session.query(State).filter(and_(
-        State.jobdate == (jobsonl.timestamp.date() + datetime.timedelta(days=1)),
-        State.name == jobsonl.name
-    )).one_or_none()
+    # set expected times based on sliding window of max 5
+    sw=5+1
 
-    if statetomorrow is None:
-        statetomorrow = State(
-            name = jobsonl.name,
-            jobdate = jobsonl.timestamp.date() + datetime.timedelta(days=1),
-            status = "await",
-            parent = stateservertomorrow
-        )
-        db.session.add(statetomorrow)
-  
-    statetoday.status = jobsonl.status
+    counter = collections.Counter()
+    jobs = db.session.query(Jobsonl).filter(and_(
+        Jobsonl.server == server,
+        Jobsonl.job == job,
+        Jobsonl.status == settings["finishline.job.status.success"],
+    )).order_by(id.desc()).limit(sw).all()
 
-    stackparent = db.session.query(Stack).filter(and_(
-        Stack.server == jobsonl.server,
-    )).order_by(Stack.id.desc()).first()
+    for job in jobs:
+        counter["start"] += (job.actual_start - job.date).total_seconds()
+        counter["end"] += (job.actual_end - job.date).total_seconds()
 
-    if not stackparent:
-        stackparent = Stack(
-            server = jobsonl.server,
-            name = "job-runner",
-            state = stateservertoday
-        )
-        db.session.add(stackparent)
-
-    if jobsonl.status == settings["finishline.job.status.starting"]:
-        statetoday.parent = stackparent.state # add my parent
-        stackme = Stack( # make myself a parent
-            server = jobsonl.server,
-            name = jobsonl.name,
-            state = statetoday
-        )
-        statetoday.statustxt = "kører"
-        statetoday.parent.statustxt = f"kører {jobsonl.name}"
-        db.session.add(stackme)
-        statetoday.actual_start = jobsonl.timestamp
-        statetomorrow.expected_start = calc_expected("start", statetoday)
-    else:
-        db.session.delete(stackparent) # stackparent should be me
-        statetoday.actual_end = jobsonl.timestamp
-        statetoday.status = jobsonl.status
-        if statetoday.parent.status != settings["finishline.job.status.failure"]:
-            statetoday.parent.status = jobsonl.status 
-
-        # only propagate up leaf status
-        if not len(statetoday.children):
-            statetoday.statustxt = f"afsluttet med {jobsonl.status}"
-            statetoday.parent.statustxt = f"{jobsonl.name} afsluttet med {jobsonl.status}"
-        else:
-            statetoday.parent.statustxt = statetoday.statustxt
-        statetomorrow.expected_end = calc_expected("end", statetoday)
+    if len(jobs):
+        job_state.expected_start = (job_state.jobdate
+            ) + datetime.timedelta(seconds = counter["start"] / len(jobs))
+        job_state.expected_end = (job_state.jobdate
+            ) + datetime.timedelta(seconds = counter["end"] / len(jobs))
 
     db.session.commit()
-    
+    return server_state
+
+
+
+def get_job_states(server, date):
+    job_states = [
+        get_job_state(job, server, date)
+        for job in db.session.query(ServerJob).filter(and_(
+            ServerJob.server == server,
+            ServerJob.enabled == True
+        )).all()
+    ]
+    return job_states
+
+
 def get_state(stateid=None, date=datetime.date.today()):
     # date only used when no stateid is given
     if stateid is None:
-        return db.session.query(State).filter(and_(
-            State.jobdate == date,
-            State.name == "job-runner",
-        )).all()
+        return get_server_states(date)
     else:
         parentstate = db.session.query(State).get(stateid)
         return parentstate.children
@@ -236,13 +271,12 @@ def report(server):
     jobsonl = store_jobsonl(incoming)
     if jobsonl is None:
         return flask.jsonify({"info":"duplicate"})
-    elif jobsonl.name in settings["finishline.job.names.ignored"]:
+    elif jobsonl.name in settings["finishline.job.name.ignored"]:
         return flask.jsonify({"info":"ignored"})
-    elif jobsonl.name in settings["finishline.job.names.meta"]:
+    elif jobsonl.name in settings["finishline.job.name.meta"]:
         handle_meta(jobsonl)
         return flask.jsonify({"info":"meta"})
     else:
-        handle_jobstatus(jobsonl)
         return flask.jsonify({"info":"jobstatus"})
 
 
@@ -254,8 +288,8 @@ def page():
 
     class Header:
         id = ""
-        name = "Jobnavn" 
-        server = "Servernavn"
+        name = "Jobnavn"
+        servername = "Servernavn"
         expected_start = "Forventet start"
         expected_end = "Forventet slut"
         actual_start = "Aktuel Start"
@@ -274,7 +308,7 @@ def page():
             classes = "has-background-danger"
         return "".join([
             f"<tr class=\"{classes}\" {onclick}>",
-            f"<{td}>{state.server}</{td}>",
+            f"<{td}>{state.servername}</{td}>",
             f"<{td}>{state.name}</{td}>",
             f"<{td}>{state.expected_start or ''}</{td}>",
             f"<{td}>{state.expected_end or ''}</{td}>",
@@ -317,7 +351,13 @@ def insert_jobs():
     jr = "https://raw.githubusercontent.com/OS2mo/os2mo-data-import-and-export/development/tools/job-runner.sh"
     import re
     import urllib.request
-    jr = urllib.request.urlopen(jr).read().decode()
+    from urllib.error import URLError
+    jrsh = pathlib.Path(settings["finishline.job-runner.sh"])
+    try:
+        jr = urllib.request.urlopen(jr).read().decode()
+        jrsh.write_text(jr)
+    except URLError:
+        jr = jrsh.read_text()
     for indicator, name in re.findall(
         "(RUN[_A-Z0-9]*).*\n *run-job ([_a-z0-9]*)", jr, re.MULTILINE
     ):
@@ -329,6 +369,9 @@ def insert_jobs():
 
 if __name__ == "__main__":
     db.create_all()
-    insert_jobs()
+    try:
+        insert_jobs()
+    except:
+        pass
     app.run()
 

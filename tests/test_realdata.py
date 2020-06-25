@@ -8,8 +8,8 @@ jobsonlines = [
     {"time":"2020-03-20T11:32:25 +0100","date":"2020-03-20","batch":"17","job":"job-runner total-status","job-status":"success","imports-ok":"true","exports-ok":"true","reports-ok":"true","backup-ok":"true"},
     {"time":"2020-03-20T11:34:01 +0100","date":"2020-03-20","batch":"18","job":"imports","job-status":"starting"},
     {"time":"2020-03-20T11:34:01 +0100","date":"2020-03-20","batch":"18","job":"imports_opus_diff_import","job-status":"starting"},
-    {"time":"2020-03-20T11:34:01 +0100","date":"2020-03-20","batch":"18","job":"imports_opus_diff_import","job-status":"success"},
-    {"time":"2020-03-20T11:34:01 +0100","date":"2020-03-20","batch":"18","job":"imports","job-status":"success"},
+    {"time":"2020-03-20T11:34:01 +0100","date":"2020-03-20","batch":"18","job":"imports_opus_diff_import","job-status":"failed"},
+    {"time":"2020-03-20T11:34:01 +0100","date":"2020-03-20","batch":"18","job":"imports","job-status":"failed"},
     {"time":"2020-03-20T11:34:01 +0100","date":"2020-03-20","batch":"18","job":"exports","job-status":"starting"},
     {"time":"2020-03-20T11:34:01 +0100","date":"2020-03-20","batch":"18","job":"exports_cpr_uuid","job-status":"starting"},
     {"time":"2020-03-20T11:37:22 +0100","date":"2020-03-20","batch":"18","job":"exports_cpr_uuid","job-status":"success"},
@@ -22,6 +22,7 @@ jobsonlines = [
 ]
 
 testdb = pathlib.Path(__file__).parent / 'tests.db'
+alldata = pathlib.Path(__file__).parent.parent / 'data'
 
 
 class Tests(unittest.TestCase):
@@ -41,7 +42,7 @@ class Tests(unittest.TestCase):
         from finishline.settings import settings
         settings.update({
             #"finishline.sqlalchemy.engine.uri": f"sqlite:///{testdb}",
-            "finishline.sqlalchemy.engine.echo": False,
+            "finishline.sqlalchemy.engine.echo": True,
             "finishline.job.names.ignored":["job-runner total-status", ],
             "finishline.job.names.meta":["job-runner enabled-jobs", "job-runner version-info"],
             "finishline.job.name": "job",
@@ -85,3 +86,13 @@ class Tests(unittest.TestCase):
     def test_04(self):
         for i in jobsonlines:
             response = self.insert_one("test-server", i)
+
+    def test_05_all_data(self):
+        for i in alldata.iterdir():
+            servername = i.stem
+            print(servername)
+            for i in i.read_text().split("\n"):
+                print(i)
+                self.insert_one(server=str(servername), jobsonl=json.loads(i))
+
+

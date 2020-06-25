@@ -28,22 +28,27 @@ class Server(db.Model):
 class Jobsonl(db.Model):
     __tablename__ = "jobsonl"
     id = Column(Integer, primary_key=True)
-    server = Column(String)
+    server_id = Column(Integer, ForeignKey('server.id'))
+    job_id = Column(Integer, ForeignKey("job.id"))
     name = Column(String)
     timestamp = Column(DateTime)
     date = Column(Date)
     status = Column(String)
     raw = Column(String)
+    server = relationship("Server")
+    job = relationship("Job")
 
 
 class State(db.Model):
     __tablename__ = "jobstate"
     id = Column(Integer, primary_key=True)
     parent_id = Column(Integer, ForeignKey('jobstate.id'))
+    server_id = Column(Integer, ForeignKey('server.id'))
     expected_start = Column(DateTime)
     expected_end = Column(DateTime)
     actual_start = Column(DateTime)
     actual_end = Column(DateTime)
+    servername = Column(String)
     server = Column(String)
     jobdate = Column(Date)
     name = Column(String)
@@ -52,6 +57,7 @@ class State(db.Model):
     children = relationship("State",
         backref=backref('parent', remote_side=[id])
     )
+    server = relationship("Server")
 
 
 class Stack(db.Model):

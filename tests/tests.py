@@ -8,20 +8,20 @@ testdb = pathlib.Path(__file__).parent / 'tests.db'
 
 job_runner = {
     "server2": [
-        {"job": "imports", "job-status": "starting", "time": "2030-01-14T12:00:00z"},
-        {"job": "imports_do_thing", "job-status": "starting", "time": "2030-01-14T12:00:00z"},
-        {"job": "imports_do_thing", "job-status": "success", "time": "2030-01-14T12:10:00z"},
-        {"job": "imports_do_other", "job-status": "starting", "time": "2030-01-14T12:10:00z"},
-        {"job": "imports_do_other", "job-status": "success", "time": "2030-01-14T12:20:00z"},
-        {"job": "imports", "job-status": "success", "time": "2030-01-14T12:20:00z"},
+        {"job": "imports", "job-status": "starting", "date": "2030-01-14", "time": "2030-01-14T12:00:00z"},
+        {"job": "imports_do_thing", "job-status": "starting", "date": "2030-01-14", "time": "2030-01-14T12:00:00z"},
+        {"job": "imports_do_thing", "job-status": "success", "date": "2030-01-14", "time": "2030-01-14T12:10:00z"},
+        {"job": "imports_do_other", "job-status": "starting", "date": "2030-01-14", "time": "2030-01-14T12:10:00z"},
+        {"job": "imports_do_other", "job-status": "success", "date": "2030-01-14", "time": "2030-01-14T12:20:00z"},
+        {"job": "imports", "job-status": "success", "date": "2030-01-14", "time": "2030-01-14T12:20:00z"},
     ],
     "server1": [
-        {"job": "imports", "job-status": "starting", "time": "2030-01-14T10:00:00z"},
-        {"job": "imports_do_thing", "job-status": "starting", "time": "2030-01-14T10:00:00z"},
-        {"job": "imports_do_thing", "job-status": "success", "time": "2030-01-14T10:10:00z"},
-        {"job": "imports_do_other", "job-status": "starting", "time": "2030-01-14T10:10:00z"},
-        {"job": "imports_do_other", "job-status": "failed", "time": "2030-01-14T10:20:00z"},
-        {"job": "imports", "job-status": "failed", "time": "2030-01-14T10:20:00z"},
+        {"job": "imports", "job-status": "starting", "date": "2030-01-14", "time": "2030-01-14T10:00:00z"},
+        {"job": "imports_do_thing", "job-status": "starting", "date": "2030-01-14", "time": "2030-01-14T10:00:00z"},
+        {"job": "imports_do_thing", "job-status": "success", "date": "2030-01-14", "time": "2030-01-14T10:10:00z"},
+        {"job": "imports_do_other", "job-status": "starting", "date": "2030-01-14", "time": "2030-01-14T10:10:00z"},
+        {"job": "imports_do_other", "job-status": "failed", "date": "2030-01-14", "time": "2030-01-14T10:20:00z"},
+        {"job": "imports", "job-status": "failed", "date": "2030-01-14", "time": "2030-01-14T10:20:00z"},
     ]
 }
 
@@ -59,15 +59,15 @@ class Tests(unittest.TestCase):
     @freeze_time("2030-01-14")
     def test1(self):
         self.insert_all()
-        
+
         # vi får to serverstates
         serverstates = self.get_state(date=datetime.date.today())
         self.assertEqual(serverstates[0].status, self.settings["finishline.job.status.success"])
         self.assertEqual(serverstates[1].status, self.settings["finishline.job.status.failure"])
-        
+
         # fejlibesked kommer fra laveste nieveau
-        self.assertEqual(serverstates[1].statustxt, "imports_do_other afsluttet med failed") 
-        
+        self.assertEqual(serverstates[1].statustxt, "imports_do_other afsluttet med failed")
+
         # der er kun en sectionstate, imports
         sectionstates = self.get_state(serverstates[1].id)
         self.assertEqual(sectionstates[0].name, "imports")
@@ -89,7 +89,7 @@ class Tests(unittest.TestCase):
 
     def test_insert_jobs(self):
         self.insert_jobs()
-        
+
 
 
 
