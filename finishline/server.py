@@ -141,8 +141,6 @@ def get_server_state(server, date):
         State.name == "Job-Runner",
         State.server == server
     )).one_or_none()
-    if server_state is not None and date < datetime.date.today():
-        return server_state
 
     # if it is not there, calc job states first
     job_states = get_job_states(server, date)
@@ -157,8 +155,10 @@ def get_server_state(server, date):
         )
         db.session.add(server_state)
     if len(job_states):
-        expected_start=job_states[0].expected_start,
-        expected_end=job_states[-1].expected_end,
+        server_state.expected_start = job_states[0].expected_start
+        server_state.expected_end = job_states[-1].expected_end
+        server_state.status = job_states[-1].status
+
     for job_state in job_states:
         job_state.parent = server_state
         server_state.status = job_state.status
@@ -173,13 +173,14 @@ def get_server_states(date):
     return states
 
 def get_job_state(job, server, date):
+    import pdb; pdb.set_trace()
     job_state = db.session.query(State).filter(and_(
         State.jobdate == date,
         State.name == job.name,
         State.server == server
     )).one_or_none()
     if job_state is not None:
-        if job_state.actual_start is not None:
+        if job_state.actual_end is not None:
             #finished
             return job_state
 
@@ -203,6 +204,7 @@ def get_job_state(job, server, date):
     )).first()
     if job_state and actual_end_job:
         job_state.actual_start = actual_end_job.timestamp
+        job_state.status = actual_end_job.status
 
     job_state = State(
         jobdate=date,
@@ -220,7 +222,7 @@ def get_job_state(job, server, date):
         db.session.add(job.state)
 
     # set expected times based on sliding window of max 5
-    sw=5+1
+    sw=5
 
     counter = collections.Counter()
     jobs = db.session.query(Jobsonl).filter(and_(
